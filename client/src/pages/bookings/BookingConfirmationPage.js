@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import {
   FaCheckCircle,
   FaDownload,
@@ -25,27 +26,109 @@ const BookingConfirmationPage = () => {
   useEffect(() => {
     const fetchBooking = async () => {
       try {
+        setLoading(true);
         const bookingId = new URLSearchParams(location.search).get("bookingId");
 
+        // First check if we have booking data in location state
         if (location.state?.booking) {
-          setBooking(location.state.booking);
-        } else if (bookingId) {
-          // Fetch booking data from API if direct link is used
-          const token = localStorage.getItem("token");
-          const response = await fetch(`${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/bookings/${bookingId}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
+          console.log(
+            "Using booking data from location state:",
+            location.state.booking
+          );
+
+          // Ensure we have all required flight fields with fallbacks
+          const bookingData = {
+            ...location.state.booking,
+            flight: {
+              // Default values for required flight fields
+              flightNumber: "N/A",
+              airline: { name: "Unknown Airline" },
+              departureCity: "Unknown",
+              arrivalCity: "Unknown",
+              departureTime: new Date().toISOString(),
+              arrivalTime: new Date().toISOString(),
+              duration: "N/A",
+              // Override with any provided flight data
+              ...(location.state.booking.flight || {}),
             },
-          });
-          if (!response.ok) throw new Error("Booking not found");
-          const data = await response.json();
-          setBooking(data.data || data);
-        } else {
-          throw new Error("No booking data available");
+            // Ensure we have required booking fields
+            bookingId:
+              location.state.booking.bookingId ||
+              location.state.booking._id ||
+              location.state.booking.pnr ||
+              "N/A",
+            pnr: location.state.booking.pnr || "N/A",
+            status: location.state.booking.status || "confirmed",
+            bookingDate:
+              location.state.booking.bookingDate || new Date().toISOString(),
+            passengerCount: location.state.booking.passengerCount || 1,
+            totalAmount: location.state.booking.totalAmount || 0,
+            amountPaid: location.state.booking.amountPaid || 0,
+            contactInfo: location.state.booking.contactInfo || {},
+          };
+
+          console.log("Processed booking data:", bookingData);
+          setBooking(bookingData);
+          setError("");
+        }
+        // If we have a bookingId in URL, try to fetch the booking
+        else if (bookingId) {
+          console.log("Fetching booking with ID:", bookingId);
+          const token = localStorage.getItem("token");
+          if (!token) throw new Error("Authentication required");
+
+          const response = await fetch(
+            `${
+              process.env.REACT_APP_API_URL || "http://localhost:5000/api"
+            }/bookings/${bookingId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              credentials: "include",
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.message ||
+                `Failed to fetch booking: ${response.status} ${response.statusText}`
+            );
+          }
+
+          const responseData = await response.json();
+          console.log("Fetched booking data:", responseData);
+
+          // Handle both response formats: { data: {...} } and direct object
+          const bookingData = responseData.data || responseData;
+
+          if (!bookingData) {
+            throw new Error("No booking data received from server");
+          }
+
+          // Ensure we have required fields
+          if (!bookingData._id && !bookingData.id) {
+            throw new Error("Invalid booking data: missing ID");
+          }
+
+          setBooking(bookingData);
+          setError("");
+        }
+        // No booking data available
+        else {
+          throw new Error(
+            "No booking information available. Please start a new booking."
+          );
         }
       } catch (err) {
-        setError(err.message || "Failed to load booking details");
-        console.error("Booking fetch error:", err);
+        console.error("Error in fetchBooking:", err);
+        setError(
+          err.message ||
+            "Failed to load booking details. Please try again later."
+        );
       } finally {
         setLoading(false);
       }
@@ -55,32 +138,102 @@ const BookingConfirmationPage = () => {
   }, [location]);
 
   if (loading) {
-    return <LoadingContainer>Loading booking details...</LoadingContainer>;
+    return (
+      <LoadingContainer>
+        <LoadingSpinner />
+        <p>Loading booking details...</p>
+      </LoadingContainer>
+    );
   }
 
-  if (error || !booking) {
+  if (error) {
     return (
       <ErrorContainer>
-        <h2>Unable to load booking details</h2>
-        <p>{error || "No booking information found."}</p>
-        <Button onClick={() => navigate("/")}>Back to Home</Button>
+        <ErrorIcon>⚠️</ErrorIcon>
+        <h2>Something went wrong</h2>
+        <p>{error}</p>
+        {console.error(
+          "Booking Error:",
+          error,
+          "Location State:",
+          location.state
+        )}
+        <Button onClick={() => navigate("/flights")}>Back to Flights</Button>
+        <Button
+          $primary
+          onClick={() => window.location.reload()}
+          style={{ marginLeft: "10px" }}
+        >
+          Try Again
+        </Button>
       </ErrorContainer>
     );
   }
 
+  if (!booking) {
+    return (
+      <ErrorContainer>
+        <ErrorIcon>❌</ErrorIcon>
+        <h2>No Booking Found</h2>
+        <p>We couldn't find the booking you're looking for.</p>
+        <p>Please check the URL or try again later.</p>
+        <Button onClick={() => navigate("/flights")}>Search Flights</Button>
+        <Button
+          onClick={() => navigate("/my-bookings")}
+          style={{ marginLeft: "10px" }}
+        >
+          View My Bookings
+        </Button>
+      </ErrorContainer>
+    );
+  }
+
+  // Destructure with fallbacks for all required fields
   const {
-    bookingId,
-    pnr,
-    status,
-    bookingDate,
-    flight = {},
+    bookingId = "N/A",
+    pnr = "N/A",
+    status = "confirmed",
+    bookingDate = new Date().toISOString(),
+    flight = {
+      flightNumber: "N/A",
+      airline: { name: "Unknown Airline" },
+      departureCity: "Unknown",
+      arrivalCity: "Unknown",
+      departureTime: new Date().toISOString(),
+      arrivalTime: new Date().toISOString(),
+      duration: "N/A",
+    },
     passengerCount = 1,
     totalAmount = 0,
     amountPaid = 0,
-    contactInfo = {},
+    contactInfo = {
+      name: "Not provided",
+      email: "Not provided",
+      phone: "Not provided",
+    },
     passengers = [],
   } = booking;
-  
+
+  // Log the data for debugging
+  console.log("Rendering with booking data:", {
+    bookingId,
+    pnr,
+    status,
+    flight: {
+      flightNumber: flight?.flightNumber,
+      airline: flight?.airline?.name,
+      departureCity: flight?.departureCity,
+      arrivalCity: flight?.arrivalCity,
+      departureTime: flight?.departureTime,
+      arrivalTime: flight?.arrivalTime,
+      duration: flight?.duration,
+    },
+    passengerCount,
+    totalAmount,
+    amountPaid,
+    contactInfo,
+  });
+
   const displayBookingId = bookingId || pnr || booking._id;
   const displayAmount = totalAmount || amountPaid || 0;
 
@@ -217,20 +370,26 @@ const BookingConfirmationPage = () => {
               <FlightRoute>
                 <div className="departure">
                   <div className="time">
-                    {flight.departureTime 
-                      ? (typeof flight.departureTime === 'string' 
-                          ? new Date(flight.departureTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                          : flight.departureTime)
+                    {flight.departureTime
+                      ? typeof flight.departureTime === "string"
+                        ? new Date(flight.departureTime).toLocaleTimeString(
+                            "en-IN",
+                            { hour: "2-digit", minute: "2-digit" }
+                          )
+                        : flight.departureTime
                       : "N/A"}
                   </div>
                   <div className="date">
-                    {flight.departureTime 
-                      ? new Date(flight.departureTime).toLocaleDateString("en-IN", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
+                    {flight.departureTime
+                      ? new Date(flight.departureTime).toLocaleDateString(
+                          "en-IN",
+                          {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          }
+                        )
                       : "N/A"}
                   </div>
                   <div className="airport">{flight.departureCity || "N/A"}</div>
@@ -244,20 +403,26 @@ const BookingConfirmationPage = () => {
 
                 <div className="arrival">
                   <div className="time">
-                    {flight.arrivalTime 
-                      ? (typeof flight.arrivalTime === 'string' 
-                          ? new Date(flight.arrivalTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                          : flight.arrivalTime)
+                    {flight.arrivalTime
+                      ? typeof flight.arrivalTime === "string"
+                        ? new Date(flight.arrivalTime).toLocaleTimeString(
+                            "en-IN",
+                            { hour: "2-digit", minute: "2-digit" }
+                          )
+                        : flight.arrivalTime
                       : "N/A"}
                   </div>
                   <div className="date">
-                    {flight.arrivalTime 
-                      ? new Date(flight.arrivalTime).toLocaleDateString("en-IN", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
+                    {flight.arrivalTime
+                      ? new Date(flight.arrivalTime).toLocaleDateString(
+                          "en-IN",
+                          {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          }
+                        )
                       : "N/A"}
                   </div>
                   <div className="airport">{flight.arrivalCity || "N/A"}</div>
@@ -266,7 +431,8 @@ const BookingConfirmationPage = () => {
 
               <FlightMeta>
                 <div>
-                  <FaPlane /> {flight.airline || "Unknown"} {flight.flightNumber || "N/A"}
+                  <FaPlane /> {flight.airline || "Unknown"}{" "}
+                  {flight.flightNumber || "N/A"}
                 </div>
                 <div>
                   <FaClock /> {flight.duration || "N/A"}
@@ -301,13 +467,15 @@ const BookingConfirmationPage = () => {
                 <div>
                   <div className="label">Booking Date</div>
                   <div className="value">
-                    {bookingDate ? new Date(bookingDate).toLocaleDateString("en-IN", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }) : "N/A"}
+                    {bookingDate
+                      ? new Date(bookingDate).toLocaleDateString("en-IN", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "N/A"}
                   </div>
                 </div>
                 <div>
@@ -336,7 +504,9 @@ const BookingConfirmationPage = () => {
                   ))}
                 </div>
                 <div className="barcode-number">
-                  {String(displayBookingId).replace(/[^0-9A-Z]/g, "").substring(0, 10)}
+                  {String(displayBookingId)
+                    .replace(/[^0-9A-Z]/g, "")
+                    .substring(0, 10)}
                 </div>
               </Barcode>
               <Terms>
@@ -355,7 +525,8 @@ const BookingConfirmationPage = () => {
           <TicketFooter>
             <div>Thank you for choosing {flight.airline || "FlightBook"}!</div>
             <div>
-              For assistance, please contact our customer service at support@flightbook.com
+              For assistance, please contact our customer service at
+              support@flightbook.com
             </div>
           </TicketFooter>
         </Ticket>
@@ -407,27 +578,23 @@ const LoadingContainer = styled.div`
   align-items: center;
   min-height: 60vh;
   font-size: 1.2rem;
-  color: #555;
+  color: #666;
 `;
 
 const ErrorContainer = styled.div`
+  text-align: center;
+  padding: 2rem;
   max-width: 600px;
   margin: 2rem auto;
-  padding: 2rem;
-  text-align: center;
   background: #fff8f8;
-  border: 1px solid #ffcccc;
+  border: 1px solid #ffdddd;
   border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+`;
 
-  h2 {
-    color: #d32f2f;
-    margin-bottom: 1rem;
-  }
-
-  p {
-    margin-bottom: 1.5rem;
-    color: #666;
-  }
+const ErrorIcon = styled.div`
+  font-size: 3rem;
+  margin-bottom: 1rem;
 `;
 
 const Container = styled.div`
@@ -492,32 +659,43 @@ const Button = styled.button`
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
   border: 1px solid
-    ${({ theme, primary }) =>
-      primary ? theme.colors.primary : theme.colors.grayLight};
-  background: ${({ theme, primary }) =>
-    primary ? theme.colors.primary : "white"};
-  color: ${({ theme, primary }) => (primary ? "white" : theme.colors.grayDark)};
+    ${({ theme, $primary }) =>
+      $primary ? theme.colors.primary : theme.colors.grayLight};
+  background: ${({ theme, $primary }) =>
+    $primary ? theme.colors.primary : "white"};
+  color: ${({ theme, $primary }) =>
+    $primary ? "white" : theme.colors.grayDark};
   border-radius: ${({ theme }) => theme.radii.md};
   font-size: 0.9375rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  margin-top: ${({ $primary }) => ($primary ? "0" : "1rem")};
+  margin-left: ${({ $primary }) => ($primary ? "10px" : "0")};
 
   &:hover {
-    background: ${({ theme, primary }) =>
-      primary ? theme.colors.primaryDark : theme.colors.grayLighter};
+    background: ${({ theme, $primary }) =>
+      $primary ? theme.colors.primaryDark : theme.colors.grayLighter};
     transform: translateY(-2px);
+  }
+
+  &:active {
+    transform: translateY(1px);
   }
 
   svg {
     font-size: 1rem;
   }
+
+  box-shadow: ${({ theme }) => theme.shadows.lg};
+  overflow: hidden;
+  margin: 2rem 0;
 `;
 
 const TicketContainer = styled.div`
-  background: white;
-  border-radius: ${({ theme }) => theme.radii.lg};
-  box-shadow: ${({ theme }) => theme.shadows.lg};
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   margin: 2rem 0;
 `;

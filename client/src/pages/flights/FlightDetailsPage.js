@@ -21,10 +21,16 @@ const FlightDetailsPage = () => {
   const navigate = useNavigate();
 
   const { isAuthenticated, user } = useSelector((state) => state.auth);
-  const { data: flightResponse, isLoading: flightLoading, error: flightError } = useGetFlightQuery(id);
+  const {
+    data: flightResponse,
+    isLoading: flightLoading,
+    error: flightError,
+  } = useGetFlightQuery(id);
   const flight = flightResponse?.data;
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
-  const { data: walletData } = useGetWalletQuery(undefined, { skip: !isAuthenticated });
+  const { data: walletData } = useGetWalletQuery(undefined, {
+    skip: !isAuthenticated,
+  });
   const walletBalance = walletData?.data?.balance || 0;
 
   const [passengerCount, setPassengerCount] = useState(1);
@@ -38,7 +44,8 @@ const FlightDetailsPage = () => {
   // Get passenger count and trip type from location state or default to 1
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    const passengers = searchParams.get("passengers") || location.state?.passengers || 1;
+    const passengers =
+      searchParams.get("passengers") || location.state?.passengers || 1;
     setPassengerCount(parseInt(passengers));
 
     // Pre-fill contact info if user is authenticated
@@ -93,10 +100,14 @@ const FlightDetailsPage = () => {
       return;
     }
 
-    const totalAmount = Math.round((flight.currentPrice || flight.basePrice) * passengerCount * 1.15);
+    const totalAmount = Math.round(
+      (flight.currentPrice || flight.basePrice) * passengerCount * 1.15
+    );
 
     if (walletBalance < totalAmount) {
-      toast.error(`Insufficient wallet balance. Required: ₹${totalAmount}, Available: ₹${walletBalance}`);
+      toast.error(
+        `Insufficient wallet balance. Required: ₹${totalAmount}, Available: ₹${walletBalance}`
+      );
       return;
     }
 
@@ -114,66 +125,55 @@ const FlightDetailsPage = () => {
         };
 
         const result = await createBooking(bookingData).unwrap();
-        bookings.push(result?.data || result);
+        if (result.success && result.data) {
+          bookings.push(result.data);
+        } else {
+          throw new Error(
+            "Failed to create booking: Invalid response from server"
+          );
+        }
       }
 
       // Navigate to confirmation with the first booking
       if (bookings.length > 0) {
         const firstBooking = bookings[0];
-        // Fetch the full booking with populated flight data if needed
-        try {
-          const bookingId = firstBooking._id || firstBooking.id;
-          if (bookingId) {
-            const fullBookingResponse = await fetch(
-              `${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/bookings/${bookingId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${localStorage.getItem("token")}`,
-                },
-              }
-            );
-            if (fullBookingResponse.ok) {
-              const fullBookingData = await fullBookingResponse.json();
-              const fullBooking = fullBookingData.data || fullBookingData;
-              navigate("/bookings/confirmation", {
-                state: {
-                  booking: {
-                    ...fullBooking,
-                    flight: fullBooking.flight || flight,
-                    passengerCount,
-                    totalAmount,
-                    contactInfo,
-                    bookingId: fullBooking.pnr || fullBooking._id,
-                    bookingDate: fullBooking.bookingDate || new Date().toISOString(),
-                  },
-                },
-              });
-              toast.success("Booking confirmed successfully!");
-              return;
-            }
-          }
-        } catch (fetchError) {
-          console.error("Error fetching full booking:", fetchError);
-        }
-        
-        // Fallback to basic booking data
-        navigate("/bookings/confirmation", {
-          state: {
-            booking: {
-              ...firstBooking,
-              flight,
-              passengerCount,
-              totalAmount,
-              contactInfo,
-              bookingId: firstBooking.pnr || firstBooking._id,
-              bookingDate: firstBooking.bookingDate || new Date().toISOString(),
-            },
+
+        // Ensure we have required flight data
+        const bookingFlight = firstBooking.flight || flight;
+
+        // Prepare the booking data for the confirmation page
+        const confirmationData = {
+          ...firstBooking,
+          flight: {
+            ...bookingFlight,
+            // Ensure we have all required flight fields with fallbacks
+            flightNumber: bookingFlight.flightNumber || flight.flightNumber,
+            airline: bookingFlight.airline || flight.airline,
+            departureCity: bookingFlight.departureCity || flight.departureCity,
+            arrivalCity: bookingFlight.arrivalCity || flight.arrivalCity,
+            departureTime: bookingFlight.departureTime || flight.departureTime,
+            arrivalTime: bookingFlight.arrivalTime || flight.arrivalTime,
+            duration: bookingFlight.duration || flight.duration,
           },
+          passengerCount,
+          totalAmount,
+          contactInfo,
+          bookingId: firstBooking.pnr || firstBooking._id,
+          bookingDate: firstBooking.bookingDate || new Date().toISOString(),
+        };
+
+        // Navigate to confirmation page with the booking data
+        navigate("/bookings/confirmation", {
+          state: { booking: confirmationData },
         });
+
         toast.success("Booking confirmed successfully!");
+        return;
       }
     } catch (error) {
-      toast.error(error?.data?.message || "Failed to create booking. Please try again.");
+      toast.error(
+        error?.data?.message || "Failed to create booking. Please try again."
+      );
     }
   };
 
@@ -233,17 +233,22 @@ const FlightDetailsPage = () => {
     const totalSeats = flight.totalSeats || 100;
     const availableSeats = flight.availableSeats || totalSeats;
     const bookedSeats = totalSeats - availableSeats;
-    
+
     return Array(totalSeats)
       .fill()
       .map((_, i) => {
-        const seatId = `${String.fromCharCode(65 + Math.floor(i / 10))}${(i % 10) + 1}`;
+        const seatId = `${String.fromCharCode(65 + Math.floor(i / 10))}${
+          (i % 10) + 1
+        }`;
         const isBooked = i < bookedSeats;
         return {
           id: seatId,
           available: !isBooked,
           type: i < 12 ? "business" : "economy",
-          price: i < 12 ? (flight.currentPrice || flight.basePrice) * 1.5 : (flight.currentPrice || flight.basePrice),
+          price:
+            i < 12
+              ? (flight.currentPrice || flight.basePrice) * 1.5
+              : flight.currentPrice || flight.basePrice,
         };
       });
   };
@@ -293,7 +298,7 @@ const FlightDetailsPage = () => {
             <div className="line" />
             <div className="stops">Non-stop</div>
           </FlightRoute>
-            <div className="text-right">
+          <div className="text-right">
             <div className="time">{arrivalTime}</div>
             <div className="city">{arrivalCity}</div>
             <div className="date">{arrivalDate}</div>
@@ -451,16 +456,31 @@ const FlightDetailsPage = () => {
 
             <BookButton
               onClick={handleBookNow}
-              disabled={selectedSeats.length < passengerCount || isBooking || !contactInfo.name || !contactInfo.email || !contactInfo.phone}
+              disabled={
+                selectedSeats.length < passengerCount ||
+                isBooking ||
+                !contactInfo.name ||
+                !contactInfo.email ||
+                !contactInfo.phone
+              }
             >
-              {isBooking ? "Processing..." : isAuthenticated ? "Book Now" : "Sign In to Book"}
+              {isBooking
+                ? "Processing..."
+                : isAuthenticated
+                ? "Book Now"
+                : "Sign In to Book"}
             </BookButton>
-            
+
             {isAuthenticated && (
               <WalletInfo>
                 <span>Wallet Balance: ₹{walletBalance.toLocaleString()}</span>
-                {walletBalance < Math.round((flight?.currentPrice || flight?.basePrice || 0) * passengerCount * 1.15) && (
-                  <span style={{ color: '#d32f2f', fontSize: '0.75rem' }}>
+                {walletBalance <
+                  Math.round(
+                    (flight?.currentPrice || flight?.basePrice || 0) *
+                      passengerCount *
+                      1.15
+                  ) && (
+                  <span style={{ color: "#d32f2f", fontSize: "0.75rem" }}>
                     Insufficient balance
                   </span>
                 )}
@@ -886,7 +906,7 @@ const WalletInfo = styled.div`
   padding: 0 1.5rem 1rem;
   font-size: 0.875rem;
   color: ${({ theme }) => theme.colors.grayDark};
-  
+
   span:first-child {
     font-weight: 500;
   }

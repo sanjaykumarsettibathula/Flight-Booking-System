@@ -1,5 +1,10 @@
-import React, { useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import React, { useEffect, Suspense } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { ThemeProvider } from "styled-components";
 import { ToastContainer } from "react-toastify";
@@ -10,20 +15,33 @@ import GlobalStyle from "./styles/GlobalStyle";
 import Layout from "./components/layout/Layout";
 import PrivateRoute from "./components/routing/PrivateRoute";
 import PublicRoute from "./components/routing/PublicRoute";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import LoadingSpinner from "./components/common/LoadingSpinner";
 
-// Pages
-import HomePage from "./pages/HomePage";
-import LoginPage from "./pages/auth/LoginPage";
-import RegisterPage from "./pages/auth/RegisterPage";
-import FlightSearchPage from "./pages/flights/FlightSearchPage";
-import FlightDetailsPage from "./pages/flights/FlightDetailsPage";
-import BookingPage from "./pages/bookings/BookingPage";
-import BookingConfirmationPage from "./pages/bookings/BookingConfirmationPage";
-import BookingDetailsPage from "./pages/bookings/BookingDetailsPage";
-import MyBookingsPage from "./pages/bookings/MyBookingsPage";
-import WalletPage from "./pages/wallet/WalletPage";
-import ProfilePage from "./pages/profile/ProfilePage";
-import NotFoundPage from "./pages/error/NotFoundPage";
+// Lazy load pages for better performance
+const HomePage = React.lazy(() => import("./pages/HomePage"));
+const LoginPage = React.lazy(() => import("./pages/auth/LoginPage"));
+const RegisterPage = React.lazy(() => import("./pages/auth/RegisterPage"));
+const FlightSearchPage = React.lazy(() =>
+  import("./pages/flights/FlightSearchPage")
+);
+const FlightDetailsPage = React.lazy(() =>
+  import("./pages/flights/FlightDetailsPage")
+);
+const BookingPage = React.lazy(() => import("./pages/bookings/BookingPage"));
+const BookingConfirmationPage = React.lazy(() =>
+  import("./pages/bookings/BookingConfirmationPage")
+);
+const BookingDetailsPage = React.lazy(() =>
+  import("./pages/bookings/BookingDetailsPage")
+);
+const MyBookingsPage = React.lazy(() =>
+  import("./pages/bookings/MyBookingsPage")
+);
+const WalletPage = React.lazy(() => import("./pages/wallet/WalletPage"));
+const ProfilePage = React.lazy(() => import("./pages/profile/ProfilePage"));
+const NotFoundPage = React.lazy(() => import("./pages/error/NotFoundPage"));
+
 import { BASE_URL } from "./config";
 import { login } from "./features/auth/authSlice";
 
@@ -67,109 +85,134 @@ const AppContent = () => {
     restoreSession();
   }, [dispatch, isAuthenticated]);
 
+  // Wrapper component to handle route errors
+  const RouteErrorBoundary = ({ children }) => (
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+
   return (
-    <Router>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Layout />}>
-            <Route index element={<HomePage />} />
+    <Routes>
+      {/* Public Routes */}
+      <Route
+        path="/"
+        element={
+          <RouteErrorBoundary>
+            <Layout />
+          </RouteErrorBoundary>
+        }
+      >
+        <Route
+          index
+          element={
+            <RouteErrorBoundary>
+              <HomePage />
+            </RouteErrorBoundary>
+          }
+        />
 
-            <Route
-              path="login"
-              element={
-                <PublicRoute>
-                  <LoginPage />
-                </PublicRoute>
-              }
-            />
+        <Route
+          path="login"
+          element={
+            <PublicRoute>
+              <RouteErrorBoundary>
+                <LoginPage />
+              </RouteErrorBoundary>
+            </PublicRoute>
+          }
+        />
 
-            <Route
-              path="register"
-              element={
-                <PublicRoute>
-                  <RegisterPage />
-                </PublicRoute>
-              }
-            />
+        <Route
+          path="register"
+          element={
+            <PublicRoute>
+              <RouteErrorBoundary>
+                <RegisterPage />
+              </RouteErrorBoundary>
+            </PublicRoute>
+          }
+        />
 
-            <Route path="flights">
-              <Route index element={<FlightSearchPage />} />
-              <Route path=":id" element={<FlightDetailsPage />} />
-            </Route>
+        <Route path="flights">
+          <Route
+            index
+            element={
+              <RouteErrorBoundary>
+                <FlightSearchPage />
+              </RouteErrorBoundary>
+            }
+          />
+          <Route
+            path=":id"
+            element={
+              <RouteErrorBoundary>
+                <FlightDetailsPage />
+              </RouteErrorBoundary>
+            }
+          />
+        </Route>
 
-            {/* Protected Routes */}
-            <Route
-              path="bookings/new"
-              element={
-                <PrivateRoute>
-                  <BookingPage />
-                </PrivateRoute>
-              }
-            />
+        {/* Protected Routes */}
+        <Route
+          path="bookings/new"
+          element={
+            <PrivateRoute>
+              <BookingPage />
+            </PrivateRoute>
+          }
+        />
 
-            <Route
-              path="bookings/confirmation"
-              element={
-                <PrivateRoute>
-                  <BookingConfirmationPage />
-                </PrivateRoute>
-              }
-            />
+        <Route
+          path="bookings/confirmation"
+          element={
+            <PrivateRoute>
+              <BookingConfirmationPage />
+            </PrivateRoute>
+          }
+        />
 
-            <Route
-              path="bookings/:id"
-              element={
-                <PrivateRoute>
-                  <BookingDetailsPage />
-                </PrivateRoute>
-              }
-            />
+        <Route
+          path="bookings/:id"
+          element={
+            <PrivateRoute>
+              <BookingDetailsPage />
+            </PrivateRoute>
+          }
+        />
 
-            <Route
-              path="my-bookings"
-              element={
-                <PrivateRoute>
-                  <MyBookingsPage />
-                </PrivateRoute>
-              }
-            />
+        <Route
+          path="my-bookings"
+          element={
+            <PrivateRoute>
+              <MyBookingsPage />
+            </PrivateRoute>
+          }
+        />
 
-            <Route
-              path="wallet"
-              element={
-                <PrivateRoute>
-                  <WalletPage />
-                </PrivateRoute>
-              }
-            />
+        <Route
+          path="wallet"
+          element={
+            <PrivateRoute>
+              <WalletPage />
+            </PrivateRoute>
+          }
+        />
 
-            <Route
-              path="profile"
-              element={
-                <PrivateRoute>
-                  <ProfilePage />
-                </PrivateRoute>
-              }
-            />
+        <Route
+          path="profile"
+          element={
+            <PrivateRoute>
+              <ProfilePage />
+            </PrivateRoute>
+          }
+        />
 
-            {/* 404 Route */}
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-        </Routes>
-        <ToastContainer
-        position="bottom-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-      />
-    </Router>
+        {/* 404 Route */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   );
 };
 
 export default AppContent;
-

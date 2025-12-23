@@ -2,6 +2,75 @@ const Flight = require("../models/Flight");
 const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 
+// @desc    Search flights
+// @route   GET /api/flights/search
+// @access  Public
+exports.searchFlights = asyncHandler(async (req, res, next) => {
+  try {
+    console.log("Search request received with query:", req.query);
+
+    const { departure, arrival, date } = req.query;
+
+    // Input validation
+    if (!departure || !arrival || !date) {
+      console.log("Missing required parameters");
+      return next(
+        new ErrorResponse("Please provide departure, arrival, and date", 400)
+      );
+    }
+
+    // Parse the date and create start and end of the day
+    const searchDate = new Date(date);
+    if (isNaN(searchDate.getTime())) {
+      console.log("Invalid date format:", date);
+      return next(
+        new ErrorResponse(
+          "Please provide a valid date in YYYY-MM-DD format",
+          400
+        )
+      );
+    }
+
+    const startOfDay = new Date(searchDate);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(searchDate);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    console.log("Searching for flights with criteria:", {
+      departure,
+      arrival,
+      startOfDay,
+      endOfDay,
+    });
+
+    // Build the query
+    const query = {
+      departureCity: { $regex: departure, $options: "i" },
+      arrivalCity: { $regex: arrival, $options: "i" },
+      departureTime: {
+        $gte: startOfDay,
+        $lte: endOfDay,
+      },
+      availableSeats: { $gt: 0 },
+    };
+
+    console.log("MongoDB Query:", JSON.stringify(query, null, 2));
+
+    const flights = await Flight.find(query).sort("departureTime");
+    console.log(`Found ${flights.length} flights matching the criteria`);
+
+    res.status(200).json({
+      success: true,
+      count: flights.length,
+      data: flights,
+    });
+  } catch (error) {
+    console.error("Error in searchFlights:", error);
+    next(error);
+  }
+});
+
 // @desc    Get all flights
 // @route   GET /api/flights
 // @access  Public
