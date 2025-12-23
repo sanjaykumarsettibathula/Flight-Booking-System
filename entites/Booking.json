@@ -1,0 +1,55 @@
+{
+  "name": "Booking",
+  "type": "object",
+  "properties": {
+    "pnr": {
+      "type": "string",
+      "description": "Unique PNR number"
+    },
+    "flight_id": {
+      "type": "string",
+      "description": "Flight identifier"
+    },
+    "airline": {
+      "type": "string",
+      "description": "Airline name"
+    },
+    "departure_city": {
+      "type": "string",
+      "description": "Departure city"
+    },
+    "arrival_city": {
+      "type": "string",
+      "description": "Arrival city"
+    },
+    "departure_time": {
+      "type": "string",
+      "description": "Departure time"
+    },
+    "passenger_name": {
+      "type": "string",
+      "description": "Passenger full name"
+    },
+    "passenger_email": {
+      "type": "string",
+      "description": "Passenger email"
+    },
+    "amount_paid": {
+      "type": "number",
+      "description": "Final amount paid"
+    },
+    "base_price": {
+      "type": "number",
+      "description": "Original base price"
+    },
+    "surge_applied": {
+      "type": "boolean",
+      "description": "Whether surge pricing was applied"
+    },
+    "booking_date": {
+      "type": "string",
+      "description": "Booking date and time"
+    }
+  },
+  "required": ["pnr", "flight_id", "passenger_name", "amount_paid"]
+}

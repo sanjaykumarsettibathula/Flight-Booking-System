@@ -1,0 +1,53 @@
+{
+  "name": "Flight",
+  "type": "object",
+  "properties": {
+    "flight_id": {
+      "type": "string",
+      "description": "Unique flight identifier (e.g., AI-101)"
+    },
+    "airline": {
+      "type": "string",
+      "description": "Airline name"
+    },
+    "departure_city": {
+      "type": "string",
+      "description": "Departure city"
+    },
+    "arrival_city": {
+      "type": "string",
+      "description": "Arrival city"
+    },
+    "departure_time": {
+      "type": "string",
+      "description": "Departure time"
+    },
+    "arrival_time": {
+      "type": "string",
+      "description": "Arrival time"
+    },
+    "duration": {
+      "type": "string",
+      "description": "Flight duration"
+    },
+    "base_price": {
+      "type": "number",
+      "description": "Base price in INR (\u20b92000-\u20b93000)"
+    },
+    "aircraft": {
+      "type": "string",
+      "description": "Aircraft type"
+    },
+    "available_seats": {
+      "type": "number",
+      "description": "Number of available seats"
+    }
+  },
+  "required": [
+    "flight_id",
+    "airline",
+    "departure_city",
+    "arrival_city",
+    "base_price"
+  ]
+}

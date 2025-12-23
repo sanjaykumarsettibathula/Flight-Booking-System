@@ -1,0 +1,19 @@
+{
+  "name": "BookingAttempt",
+  "type": "object",
+  "properties": {
+    "flight_id": {
+      "type": "string",
+      "description": "Flight identifier"
+    },
+    "attempt_time": {
+      "type": "string",
+      "description": "Timestamp of booking attempt"
+    },
+    "user_session": {
+      "type": "string",
+      "description": "User session identifier"
+    }
+  },
+  "required": ["flight_id", "attempt_time"]
+}
