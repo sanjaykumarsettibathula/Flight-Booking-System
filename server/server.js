@@ -19,6 +19,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5000",
+  "https://flight-booking-system-client-lime.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
