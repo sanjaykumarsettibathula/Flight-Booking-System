@@ -6,12 +6,8 @@ import {
   Navigate,
 } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ThemeProvider } from "styled-components";
-import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-
-import theme from "./styles/theme";
-import GlobalStyle from "./styles/GlobalStyle";
+import { BASE_URL } from "./config";
+import { setSession, logout } from "./features/auth/authSlice";
 import Layout from "./components/layout/Layout";
 import PrivateRoute from "./components/routing/PrivateRoute";
 import PublicRoute from "./components/routing/PublicRoute";
@@ -42,9 +38,6 @@ const WalletPage = React.lazy(() => import("./pages/wallet/WalletPage"));
 const ProfilePage = React.lazy(() => import("./pages/profile/ProfilePage"));
 const NotFoundPage = React.lazy(() => import("./pages/error/NotFoundPage"));
 
-import { BASE_URL } from "./config";
-import { login } from "./features/auth/authSlice";
-
 const AppContent = () => {
   const dispatch = useDispatch();
   const { token, isAuthenticated } = useSelector((state) => state.auth);
@@ -66,7 +59,7 @@ const AppContent = () => {
             const data = await response.json();
             // Restore user session
             dispatch(
-              login.fulfilled({
+              setSession({
                 token: storedToken,
                 user: data.data,
               })
@@ -74,10 +67,12 @@ const AppContent = () => {
           } else {
             // Token is invalid, remove it
             localStorage.removeItem("token");
+            dispatch(logout());
           }
         } catch (error) {
           console.error("Session restoration error:", error);
           localStorage.removeItem("token");
+          dispatch(logout());
         }
       }
     };

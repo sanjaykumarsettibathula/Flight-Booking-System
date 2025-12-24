@@ -164,10 +164,15 @@ const MyBookingsPage = () => {
                       <strong>{booking.flight.airline}</strong> {booking.flight.flightNumber}
                     </div>
                     <div>
-                      Seat: <strong>{booking.seatNumber}</strong>
+                      Seats:{" "}
+                      <strong>
+                        {(booking.seatNumbers && booking.seatNumbers.join(", ")) ||
+                          booking.seatNumber ||
+                          "Auto-assigned"}
+                      </strong>
                     </div>
                     <div>
-                      Passenger: <strong>{booking.passengerName}</strong>
+                      Passengers: <strong>{booking.passengerCount || 1}</strong>
                     </div>
                   </FlightInfo>
                 </FlightDetails>

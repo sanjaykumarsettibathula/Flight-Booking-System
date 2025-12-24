@@ -22,11 +22,19 @@ export const extendedApiSlice = apiSlice.injectEndpoints({
       providesTags: (result, error, id) => [{ type: "Booking", id }],
     }),
     createBooking: builder.mutation({
-      query: (bookingData) => ({
-        url: "/bookings",
-        method: "POST",
-        body: bookingData,
-      }),
+      query: (bookingData) => {
+        const payload = {
+          ...bookingData,
+          flightId: bookingData.flightId || bookingData.flight,
+          passengerCount: bookingData.passengerCount || 1,
+          seatNumbers: bookingData.seatNumbers || [],
+        };
+        return {
+          url: "/bookings",
+          method: "POST",
+          body: payload,
+        };
+      },
       invalidatesTags: ["Booking"],
     }),
     cancelBooking: builder.mutation({

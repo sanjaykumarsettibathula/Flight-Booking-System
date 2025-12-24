@@ -9,6 +9,7 @@ const {
   deleteFlight,
   searchFlights,
   trackPrice,
+  addBookingAttempt,
 } = require("../controllers/flightController");
 
 // Public routes
@@ -19,6 +20,7 @@ router.get("/:id/price", trackPrice);
 
 // Protected routes (admin only)
 router.use(protect);
+router.post("/:id/attempt", addBookingAttempt);
 router.post("/", createFlight);
 router.put("/:id", updateFlight);
 router.delete("/:id", deleteFlight);

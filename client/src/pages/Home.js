@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "../client/src/utils/api";
+import { api } from "../utils/api";
 import FlightCard from "../components/flight/FlightCard";
 import SearchFilters from "../components/flight/SearchFilters";
 import BookingModal from "../components/booking/BookingModal";
@@ -64,46 +64,20 @@ export default function Home() {
   // Calculate surge pricing for each flight
   useEffect(() => {
     const calculatePrices = async () => {
-      if (!flights.length || !user) return;
+      if (!flights.length) return;
 
       const newPrices = {};
       const newCountdowns = {};
 
       for (const flight of flights) {
-        // Get booking attempts for this flight by current user in last 10 minutes
-        const tenMinutesAgo = new Date(
-          Date.now() - 10 * 60 * 1000
-        ).toISOString();
-        const attempts = await base44.entities.BookingAttempt.filter({
-          flight_id: flight.flight_id,
-          created_by: user.email,
-          created_date: { $gte: tenMinutesAgo },
-        });
-
-        // Calculate if surge pricing applies (3+ attempts in 5 minutes)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-        const recentAttempts = attempts.filter(
-          (a) => new Date(a.created_date) >= fiveMinutesAgo
-        );
-
-        if (recentAttempts.length >= 3) {
-          newPrices[flight.id] = Math.round(flight.base_price * 1.1);
-
-          // Find oldest attempt to calculate countdown
-          const oldestAttempt = recentAttempts.sort(
-            (a, b) => new Date(a.created_date) - new Date(b.created_date)
-          )[0];
-          const resetTime = new Date(
-            new Date(oldestAttempt.created_date).getTime() + 10 * 60 * 1000
-          );
-          const secondsLeft = Math.max(
-            0,
-            Math.floor((resetTime - new Date()) / 1000)
-          );
-          newCountdowns[flight.id] = secondsLeft;
-        } else {
-          newPrices[flight.id] = flight.base_price;
-          newCountdowns[flight.id] = 0;
+        try {
+          const priceInfo = await api.trackPrice(flight._id || flight.id);
+          const current = priceInfo?.data?.currentPrice || flight.currentPrice || flight.basePrice;
+          newPrices[flight._id || flight.id] = current;
+          newCountdowns[flight._id || flight.id] = 0;
+        } catch {
+          newPrices[flight._id || flight.id] = flight.currentPrice || flight.basePrice || flight.base_price;
+          newCountdowns[flight._id || flight.id] = 0;
         }
       }
 
@@ -142,11 +116,7 @@ export default function Home() {
 
     try {
       // Record booking attempt
-      await api.createBookingAttempt({
-        flight_id: flight._id,
-        attempt_time: new Date().toISOString(),
-        user_email: user.email,
-      });
+      await api.createBookingAttempt(flight._id);
 
       setSelectedFlight(flight);
       setShowBookingModal(true);
@@ -165,11 +135,15 @@ export default function Home() {
     setIsProcessing(true);
     try {
       const currentPrice =
-        flightPrices[selectedFlight._id] || selectedFlight.base_price;
-      const surgeApplied = currentPrice > selectedFlight.base_price;
+        flightPrices[selectedFlight._id] ||
+        selectedFlight.currentPrice ||
+        selectedFlight.basePrice ||
+        selectedFlight.base_price;
+      const surgeApplied =
+        currentPrice > (selectedFlight.basePrice || selectedFlight.base_price);
 
       // Check wallet balance
-      if (wallet.balance < currentPrice) {
+      if (wallet.balance < currentPrice * (passengerDetails.passengerCount || 1)) {
         toast.error("Insufficient wallet balance");
         setIsProcessing(false);
         return;
@@ -177,16 +151,15 @@ export default function Home() {
 
       // Create booking
       const booking = await api.createBooking({
-        flight: selectedFlight._id,
+        flightId: selectedFlight._id,
         passengerName: passengerDetails.passengerName,
         passengerEmail: passengerDetails.passengerEmail,
         passengerPhone: passengerDetails.passengerPhone,
-        amountPaid: currentPrice,
-        basePrice: selectedFlight.base_price,
+        passengerCount: passengerDetails.passengerCount || 1,
+        seatNumbers: passengerDetails.seatNumbers || [],
+        amountPaid: currentPrice * (passengerDetails.passengerCount || 1),
+        basePrice: selectedFlight.basePrice || selectedFlight.base_price,
         surgeApplied,
-        seatNumber:
-          passengerDetails.seatNumber ||
-          `A${Math.floor(Math.random() * 30) + 1}`,
         journeyDate: new Date().toISOString(),
       });
 
@@ -216,18 +189,26 @@ export default function Home() {
     .filter((flight) => {
       if (
         filters.departure !== "all" &&
-        flight.departure_city !== filters.departure
+        flight.departureCity !== filters.departure
       )
         return false;
-      if (filters.arrival !== "all" && flight.arrival_city !== filters.arrival)
+      if (filters.arrival !== "all" && flight.arrivalCity !== filters.arrival)
         return false;
       if (filters.airline !== "all" && flight.airline !== filters.airline)
         return false;
       return true;
     })
     .sort((a, b) => {
-      const priceA = flightPrices[a.id] || a.base_price;
-      const priceB = flightPrices[b.id] || b.base_price;
+      const priceA =
+        flightPrices[a._id] ||
+        a.currentPrice ||
+        a.basePrice ||
+        a.base_price;
+      const priceB =
+        flightPrices[b._id] ||
+        b.currentPrice ||
+        b.basePrice ||
+        b.base_price;
 
       switch (filters.sortBy) {
         case "price_asc":
@@ -235,7 +216,7 @@ export default function Home() {
         case "price_desc":
           return priceB - priceA;
         case "departure":
-          return a.departure_time.localeCompare(b.departure_time);
+          return a.departureTime.localeCompare(b.departureTime);
         case "duration":
           return a.duration.localeCompare(b.duration);
         default:

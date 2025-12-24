@@ -77,12 +77,10 @@ const getInitialAuthState = () => {
         };
       }
       
-      // Token exists and is valid, but we need to verify with backend
-      // For now, we'll set isAuthenticated to false and let the app verify
       return {
         user: null,
         token: token,
-        isAuthenticated: false,
+        isAuthenticated: true,
         loading: false,
         error: null,
       };
@@ -111,6 +109,17 @@ const authSlice = createSlice({
   name: "auth",
   initialState: getInitialAuthState(),
   reducers: {
+    setSession: (state, action) => {
+      const { token, user } = action.payload || {};
+      if (token) {
+        localStorage.setItem("token", token);
+      }
+      state.user = user || null;
+      state.token = token || null;
+      state.isAuthenticated = !!token;
+      state.loading = false;
+      state.error = null;
+    },
     logout: (state) => {
       localStorage.removeItem("token");
       state.user = null;
@@ -158,6 +167,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, setSession } = authSlice.actions;
 
 export default authSlice.reducer;

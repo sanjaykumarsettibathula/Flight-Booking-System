@@ -1,50 +1,22 @@
 const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
-// Helper function to handle API responses
-const handleResponse = async (response) => {
-  const contentType = response.headers.get("content-type");
-
-  if (response.ok) {
-    if (contentType && contentType.includes("application/json")) {
-      return response.json();
-    }
-    return response.text();
-  }
-
-  // Handle error responses
-  let errorMessage = "An error occurred";
-  if (contentType && contentType.includes("application/json")) {
-    const errorData = await response.json();
-    errorMessage =
-      errorData.message || errorData.error || JSON.stringify(errorData);
-  } else {
-    errorMessage = (await response.text()) || response.statusText;
-  }
-
-  const error = new Error(errorMessage);
-  error.status = response.status;
-  throw error;
-};
-
 export const api = {
   // Auth
   login: async (email, password) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/users/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-      credentials: "include",
     });
     return handleResponse(response);
   },
 
   register: async (userData) => {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    const response = await fetch(`${API_BASE_URL}/users/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(userData),
-      credentials: "include",
     });
     return handleResponse(response);
   },
@@ -53,7 +25,6 @@ export const api = {
   getFlights: async () => {
     const response = await fetch(`${API_BASE_URL}/flights`, {
       method: "GET",
-      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -62,11 +33,9 @@ export const api = {
     return handleResponse(response);
   },
 
-  // Get single flight
   getFlight: async (id) => {
     const response = await fetch(`${API_BASE_URL}/flights/${id}`, {
       method: "GET",
-      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -75,7 +44,6 @@ export const api = {
     return handleResponse(response);
   },
 
-  // Search flights
   searchFlights: async (departure, arrival, date) => {
     const query = new URLSearchParams({
       departure,
@@ -85,7 +53,6 @@ export const api = {
 
     const response = await fetch(`${API_BASE_URL}/flights/search?${query}`, {
       method: "GET",
-      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -94,60 +61,90 @@ export const api = {
     return handleResponse(response);
   },
 
+  // Booking Attempts (surge)
+  createBookingAttempt: async (flightId) => {
+    const response = await fetch(`${API_BASE_URL}/flights/${flightId}/attempt`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  trackPrice: async (flightId) => {
+    const response = await fetch(`${API_BASE_URL}/flights/${flightId}/price`, {
+      method: "GET",
+    });
+    return handleResponse(response);
+  },
+
   // Bookings
   createBooking: async (bookingData) => {
+    const payload = {
+      ...bookingData,
+      flightId: bookingData.flightId || bookingData.flight,
+    };
     const response = await fetch(`${API_BASE_URL}/bookings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
+        ...authHeaders(),
       },
-      body: JSON.stringify(bookingData),
-      credentials: "include",
+      body: JSON.stringify(payload),
     });
     return handleResponse(response);
   },
 
   getBookings: async () => {
     const response = await fetch(`${API_BASE_URL}/bookings`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      credentials: "include",
+      headers: authHeaders(),
     });
     return handleResponse(response);
+  },
+
+  downloadTicket: async (bookingId) => {
+    const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}/ticket`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Failed to download ticket");
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ticket-${bookingId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
   },
 
   // Wallet
   getWallet: async () => {
     const response = await fetch(`${API_BASE_URL}/wallet`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      credentials: "include",
-    });
-    return handleResponse(response);
-  },
-
-  // Booking Attempts (for surge pricing)
-  createBookingAttempt: async (attemptData) => {
-    const response = await fetch(`${API_BASE_URL}/booking-attempts`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify(attemptData),
-      credentials: "include",
+      headers: authHeaders(),
     });
     return handleResponse(response);
   },
 };
 
 async function handleResponse(response) {
-  const data = await response.json();
+  const contentType = response.headers.get("content-type");
+  const isJson = contentType && contentType.includes("application/json");
+  const data = isJson ? await response.json() : await response.text();
   if (!response.ok) {
-    throw new Error(data.message || "Something went wrong");
+    const message =
+      (isJson && (data.message || data.error)) ||
+      (typeof data === "string" ? data : "Something went wrong");
+    throw new Error(message);
   }
   return data;
+}
+
+function authHeaders() {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }

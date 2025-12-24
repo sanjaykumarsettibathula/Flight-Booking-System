@@ -100,9 +100,9 @@ const FlightDetailsPage = () => {
       return;
     }
 
-    const totalAmount = Math.round(
-      (flight.currentPrice || flight.basePrice) * passengerCount * 1.15
-    );
+    const base = flight.currentPrice || flight.basePrice || 0;
+    const taxes = Math.round(base * 0.15 * passengerCount);
+    const totalAmount = base * passengerCount + taxes;
 
     if (walletBalance < totalAmount) {
       toast.error(
@@ -112,64 +112,49 @@ const FlightDetailsPage = () => {
     }
 
     try {
-      // Create booking for each passenger/seat
-      const bookings = [];
-      for (let i = 0; i < passengerCount; i++) {
-        const bookingData = {
-          flightId: id,
-          passengerName: contactInfo.name,
-          passengerEmail: contactInfo.email,
-          passengerPhone: contactInfo.phone,
-          seatNumber: selectedSeats[i] || `AUTO${i + 1}`,
-          journeyDate: flight.departureTime,
-        };
+      const bookingData = {
+        flightId: id,
+        passengerName: contactInfo.name,
+        passengerEmail: contactInfo.email,
+        passengerPhone: contactInfo.phone,
+        passengerCount,
+        seatNumbers: selectedSeats,
+        journeyDate: flight.departureTime,
+      };
 
-        const result = await createBooking(bookingData).unwrap();
-        if (result.success && result.data) {
-          bookings.push(result.data);
-        } else {
-          throw new Error(
-            "Failed to create booking: Invalid response from server"
-          );
-        }
+      const result = await createBooking(bookingData).unwrap();
+      const created = result.data || result;
+
+      if (!created) {
+        throw new Error("Failed to create booking: Invalid response from server");
       }
 
-      // Navigate to confirmation with the first booking
-      if (bookings.length > 0) {
-        const firstBooking = bookings[0];
+      const bookingFlight = created.flight || flight;
+      const confirmationData = {
+        ...created,
+        flight: {
+          ...bookingFlight,
+          flightNumber: bookingFlight.flightNumber || flight.flightNumber,
+          airline: bookingFlight.airline || flight.airline,
+          departureCity: bookingFlight.departureCity || flight.departureCity,
+          arrivalCity: bookingFlight.arrivalCity || flight.arrivalCity,
+          departureTime: bookingFlight.departureTime || flight.departureTime,
+          arrivalTime: bookingFlight.arrivalTime || flight.arrivalTime,
+          duration: bookingFlight.duration || flight.duration,
+        },
+        passengerCount,
+        totalAmount,
+        contactInfo,
+        bookingId: created.pnr || created._id,
+        bookingDate: created.bookingDate || new Date().toISOString(),
+      };
 
-        // Ensure we have required flight data
-        const bookingFlight = firstBooking.flight || flight;
+      navigate("/bookings/confirmation", {
+        state: { booking: confirmationData },
+      });
 
-        // Prepare the booking data for the confirmation page
-        const confirmationData = {
-          ...firstBooking,
-          flight: {
-            ...bookingFlight,
-            // Ensure we have all required flight fields with fallbacks
-            flightNumber: bookingFlight.flightNumber || flight.flightNumber,
-            airline: bookingFlight.airline || flight.airline,
-            departureCity: bookingFlight.departureCity || flight.departureCity,
-            arrivalCity: bookingFlight.arrivalCity || flight.arrivalCity,
-            departureTime: bookingFlight.departureTime || flight.departureTime,
-            arrivalTime: bookingFlight.arrivalTime || flight.arrivalTime,
-            duration: bookingFlight.duration || flight.duration,
-          },
-          passengerCount,
-          totalAmount,
-          contactInfo,
-          bookingId: firstBooking.pnr || firstBooking._id,
-          bookingDate: firstBooking.bookingDate || new Date().toISOString(),
-        };
-
-        // Navigate to confirmation page with the booking data
-        navigate("/bookings/confirmation", {
-          state: { booking: confirmationData },
-        });
-
-        toast.success("Booking confirmed successfully!");
-        return;
-      }
+      toast.success("Booking confirmed successfully!");
+      return;
     } catch (error) {
       toast.error(
         error?.data?.message || "Failed to create booking. Please try again."

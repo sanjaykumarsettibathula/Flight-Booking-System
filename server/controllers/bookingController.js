@@ -5,6 +5,7 @@ const Wallet = require("../models/Wallet");
 const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 const { generatePNR } = require("../utils/helpers");
+const PDFDocument = require("pdfkit");
 
 // @desc    Create a new booking
 // @route   POST /api/bookings
@@ -16,6 +17,8 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     passengerEmail,
     passengerPhone,
     seatNumber,
+    seatNumbers = [],
+    passengerCount: passengerCountRaw,
     journeyDate,
   } = req.body;
 
@@ -25,27 +28,37 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse(`Flight not found with id ${flightId}`, 404));
   }
 
+  // Determine passenger count and seat selection
+  const normalizedSeatNumbers = Array.isArray(seatNumbers)
+    ? seatNumbers.filter(Boolean)
+    : [];
+  const passengerCount =
+    passengerCountRaw ||
+    (normalizedSeatNumbers.length > 0 ? normalizedSeatNumbers.length : 1);
+
   // Check seat availability
-  if (flight.availableSeats <= 0) {
+  if (flight.availableSeats < passengerCount) {
     return next(new ErrorResponse("No seats available on this flight", 400));
   }
 
-  // Check if seat is already booked
-  const existingBooking = await Booking.findOne({
-    flight: flightId,
-    seatNumber,
-    status: "confirmed",
-    journeyDate: new Date(journeyDate).setHours(0, 0, 0, 0),
-  });
+  // Check if seat is already booked (only if specific seats provided)
+  if (normalizedSeatNumbers.length) {
+    const existingBooking = await Booking.findOne({
+      flight: flightId,
+      status: "confirmed",
+      journeyDate: new Date(journeyDate).setHours(0, 0, 0, 0),
+      seatNumbers: { $in: normalizedSeatNumbers },
+    });
 
-  if (existingBooking) {
-    return next(new ErrorResponse("Seat already booked", 400));
+    if (existingBooking) {
+      return next(new ErrorResponse("One or more seats already booked", 400));
+    }
   }
 
   // Calculate total amount (including taxes)
   const basePrice = flight.currentPrice || flight.basePrice;
-  const taxes = Math.round(basePrice * 0.15);
-  const totalAmount = basePrice + taxes;
+  const taxes = Math.round(basePrice * 0.15) * passengerCount;
+  const totalAmount = (basePrice * passengerCount) + taxes;
 
   // Check wallet balance and deduct amount
   const wallet = await Wallet.getOrCreateWallet(req.user.id);
@@ -61,8 +74,16 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
   // Deduct amount from wallet
   await wallet.deductFunds(
     totalAmount,
-    `Flight booking - ${flight.flightNumber} - Seat ${seatNumber}`
+    `Flight booking - ${flight.flightNumber} - Seats ${passengerCount}`
   );
+
+  // If no specific seats provided, auto-assign seats (simple allocator)
+  const finalSeatNumbers =
+    normalizedSeatNumbers.length > 0
+      ? normalizedSeatNumbers
+      : Array.from({ length: passengerCount }).map(
+          (_, idx) => `A${Math.floor(Math.random() * 30) + 1 + idx}`
+        );
 
   // Create booking
   const booking = await Booking.create({
@@ -72,14 +93,16 @@ exports.createBooking = asyncHandler(async (req, res, next) => {
     passengerEmail,
     passengerPhone,
     pnr: generatePNR(),
-    seatNumber,
+    seatNumber: finalSeatNumbers[0],
+    seatNumbers: finalSeatNumbers,
+    passengerCount,
     journeyDate,
     amountPaid: totalAmount,
     status: "confirmed",
   });
 
   // Update available seats
-  flight.availableSeats -= 1;
+  flight.availableSeats -= passengerCount;
   await flight.save();
 
   // Add booking to user's bookings
@@ -175,7 +198,7 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
 
   // Update available seats
   await Flight.findByIdAndUpdate(booking.flight, {
-    $inc: { availableSeats: 1 },
+    $inc: { availableSeats: booking.passengerCount || 1 },
   });
 
   // Refund to wallet (90% refund)
@@ -189,7 +212,7 @@ exports.cancelBooking = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Generate ticket
+// @desc    Generate ticket (PDF)
 // @route   GET /api/bookings/:id/ticket
 // @access  Private
 exports.generateTicket = asyncHandler(async (req, res, next) => {
@@ -210,26 +233,66 @@ exports.generateTicket = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Generate PDF ticket
-  const ticket = {
-    pnr: booking.pnr,
-    passengerName: booking.passengerName,
-    flightNumber: booking.flight.flightNumber,
-    airline: booking.flight.airline,
-    from: booking.flight.departureCity,
-    to: booking.flight.arrivalCity,
-    departureTime: booking.flight.departureTime,
-    arrivalTime: booking.flight.arrivalTime,
-    seatNumber: booking.seatNumber,
-    journeyDate: booking.journeyDate,
-    status: booking.status,
-    amountPaid: booking.amountPaid,
-  };
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const chunks = [];
 
-  // In a real app, you would generate a PDF here
-  // For now, we'll return the ticket data
-  res.status(200).json({
-    success: true,
-    data: ticket,
+  doc.on("data", (chunk) => chunks.push(chunk));
+  doc.on("end", () => {
+    const pdfBuffer = Buffer.concat(chunks);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ticket-${booking.pnr}.pdf"`
+    );
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdfBuffer);
   });
+
+  // Header
+  doc
+    .fontSize(20)
+    .text("Flight Ticket", { align: "center" })
+    .moveDown(0.5);
+  doc
+    .fontSize(12)
+    .text(`PNR: ${booking.pnr}`, { align: "center" })
+    .moveDown(1.5);
+
+  // Passenger & Booking
+  doc.fontSize(12).text(`Passenger: ${booking.passengerName}`);
+  doc.text(`Email: ${booking.passengerEmail || booking.user.email || ""}`);
+  doc.text(`Phone: ${booking.passengerPhone || ""}`);
+  doc.text(
+    `Booking Date: ${new Date(booking.bookingDate || booking.createdAt).toLocaleString()}`
+  );
+  doc.text(
+    `Journey Date: ${new Date(booking.journeyDate).toLocaleDateString()}`
+  );
+  doc.moveDown();
+
+  // Flight details
+  doc.fontSize(14).text("Flight Details", { underline: true }).moveDown(0.5);
+  doc.fontSize(12).text(`Airline: ${booking.flight.airline}`);
+  doc.text(`Flight: ${booking.flight.flightNumber}`);
+  doc.text(
+    `Route: ${booking.flight.departureCity} → ${booking.flight.arrivalCity}`
+  );
+  doc.text(
+    `Departure: ${new Date(
+      booking.flight.departureTime
+    ).toLocaleString()} | Arrival: ${new Date(
+      booking.flight.arrivalTime
+    ).toLocaleString()}`
+  );
+  doc.text(
+    `Seats: ${(booking.seatNumbers && booking.seatNumbers.join(", ")) || booking.seatNumber || "Auto-assigned"}`
+  );
+  doc.text(`Passengers: ${booking.passengerCount || 1}`);
+  doc.moveDown();
+
+  // Payment
+  doc.fontSize(14).text("Payment", { underline: true }).moveDown(0.5);
+  doc.fontSize(12).text(`Amount Paid: ₹${booking.amountPaid}`);
+  doc.text(`Status: ${booking.status}`);
+
+  doc.end();
 });

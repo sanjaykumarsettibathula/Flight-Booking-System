@@ -33,6 +33,8 @@ export default function BookingModal({
   const [passengerName, setPassengerName] = useState("");
   const [passengerEmail, setPassengerEmail] = useState("");
   const [passengerPhone, setPassengerPhone] = useState("");
+  const [passengerCount, setPassengerCount] = useState(1);
+  const [seatNumbersInput, setSeatNumbersInput] = useState("");
   const [error, setError] = useState("");
 
   const insufficientBalance = walletBalance < currentPrice;
@@ -57,10 +59,22 @@ export default function BookingModal({
       return;
     }
 
+    const seatNumbers = seatNumbersInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (seatNumbers.length && seatNumbers.length !== passengerCount) {
+      setError("Seat count must match passenger count or leave seats blank");
+      return;
+    }
+
     onConfirmBooking({
       passengerName: passengerName.trim(),
       passengerEmail: passengerEmail.trim(),
       passengerPhone: passengerPhone.trim(),
+      passengerCount: Math.max(1, Number(passengerCount) || 1),
+      seatNumbers,
     });
   };
 
@@ -151,6 +165,29 @@ export default function BookingModal({
                   className="mt-1"
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-600">Passengers</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={passengerCount}
+                    onChange={(e) => setPassengerCount(Number(e.target.value))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-slate-600">
+                    Seat Numbers (comma-separated, optional)
+                  </Label>
+                  <Input
+                    value={seatNumbersInput}
+                    onChange={(e) => setSeatNumbersInput(e.target.value)}
+                    placeholder="e.g. A1,A2"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -160,13 +197,15 @@ export default function BookingModal({
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">Base Fare</span>
-              <span>₹{flight.base_price?.toLocaleString()}</span>
+              <span>₹{(flight.basePrice || flight.base_price)?.toLocaleString()}</span>
             </div>
             {surgeApplied && (
               <div className="flex justify-between text-sm text-red-600">
                 <span>Surge Pricing (+10%)</span>
                 <span>
-                  ₹{Math.round(flight.base_price * 0.1).toLocaleString()}
+                  ₹{Math.round(
+                    (flight.basePrice || flight.base_price || 0) * 0.1
+                  ).toLocaleString()}
                 </span>
               </div>
             )}

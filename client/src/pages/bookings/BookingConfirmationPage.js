@@ -12,8 +12,7 @@ import {
   FaChair,
   FaTag,
 } from "react-icons/fa";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { api } from "../../utils/api";
 
 const BookingConfirmationPage = () => {
   const location = useLocation();
@@ -247,84 +246,20 @@ const BookingConfirmationPage = () => {
   };
 
   const handleDownloadTicket = async () => {
-    const ticketElement = document.getElementById("ticket");
-
-    // Use html2canvas to capture the ticket as an image
-    const canvas = await html2canvas(ticketElement, {
-      scale: 2, // Increase for better quality
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-    });
-
-    // Convert canvas to PDF
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth() - 20; // 10mm margin on each side
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-    // Center the image on the page
-    const x = (pdf.internal.pageSize.getWidth() - pdfWidth) / 2;
-
-    pdf.addImage(imgData, "PNG", x, 10, pdfWidth, pdfHeight);
-    pdf.save(`ticket-${bookingId}.pdf`);
+    try {
+      await api.downloadTicket(displayBookingId || bookingId);
+    } catch (err) {
+      setError(err.message || "Failed to download ticket");
+    }
   };
 
-  const handlePrintTicket = async () => {
-    const ticketElement = document.getElementById("ticket");
-    const canvas = await html2canvas(ticketElement, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-    });
-
-    const dataUrl = canvas.toDataURL("image/png");
-    const printWindow = window.open("", "_blank");
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Print Ticket</title>
-          <style>
-            @media print {
-              @page { margin: 0; }
-              body { margin: 1.6cm; }
-              .no-print { display: none; }
-            }
-            img { width: 100%; height: auto; }
-          </style>
-        </head>
-        <body>
-          <img src="${dataUrl}" alt="E-Ticket" />
-          <div class="no-print" style="text-align: center; margin-top: 20px;">
-            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-              Print
-            </button>
-            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px; margin-left: 10px; cursor: pointer;">
-              Close
-            </button>
-          </div>
-          <script>
-            // Auto-print when the window loads
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
+  const handlePrintTicket = () => {
+    // Use the backend-generated PDF for print as well
+    handleDownloadTicket();
   };
 
   const handleEmailTicket = () => {
-    // In a real app, this would trigger an email service
-    alert("This would send the ticket to your email in a real application");
+    alert("Emailing tickets is not enabled in this demo build.");
   };
 
   return (
